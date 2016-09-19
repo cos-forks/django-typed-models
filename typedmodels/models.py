@@ -10,6 +10,7 @@ from django.db import models
 from django.db.models.base import ModelBase
 from django.db.models.fields import Field
 from django.db.models.query_utils import DeferredAttribute, deferred_class_factory
+from django.utils.datastructures import ImmutableList
 from django.utils.encoding import smart_text
 from django.utils.six import with_metaclass
 
@@ -228,14 +229,23 @@ class TypedModelMetaclass(ModelBase):
             cache_key = (forward, reverse, include_parents, include_hidden, seen_models is None)
 
             was_cached = cache_key in self._get_fields_cache
+            if forward:
+                fields = ImmutableList(list(orig_get_fields(
+                    forward=forward,
+                    reverse=reverse,
+                    include_parents=include_parents,
+                    include_hidden=include_hidden,
+                    seen_models=seen_models
+                )) + self.virtual_fields)
+            else:
+                fields = orig_get_fields(
+                    forward=forward,
+                    reverse=reverse,
+                    include_parents=include_parents,
+                    include_hidden=include_hidden,
+                    seen_models=seen_models
+                )
 
-            fields = orig_get_fields(
-                forward=forward,
-                reverse=reverse,
-                include_parents=include_parents,
-                include_hidden=include_hidden,
-                seen_models=seen_models
-            )
 
             # If it was cached already, it's because we've already filtered this, skip it
             if not was_cached:

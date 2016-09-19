@@ -1,6 +1,10 @@
 import unittest
+
+from django.contrib.contenttypes.models import ContentType
+
 try:
     import yaml
+
     PYYAML_AVAILABLE = True
 except ImportError:
     PYYAML_AVAILABLE = False
@@ -9,17 +13,31 @@ from django.core import serializers
 from django.test import TestCase
 from django.db.models.query_utils import DeferredAttribute
 
-from .test_models import AngryBigCat, Animal, BigCat, Canine, Feline, Parrot, AbstractVegetable, Vegetable, Fruit
+from .test_models import AngryBigCat, Animal, BigCat, Canine, Feline, Parrot, AbstractVegetable, Vegetable, \
+    Fruit, \
+    Guid, UniqueIdentifier
 
 
 class SetupStuff(TestCase):
     def setUp(self):
-        Feline.objects.create(name="kitteh")
-        Feline.objects.create(name="cheetah")
-        Canine.objects.create(name="fido")
-        BigCat.objects.create(name="simba")
-        AngryBigCat.objects.create(name="mufasa")
-        Parrot.objects.create(name="Kajtek")
+        kitteh = Feline.objects.create(name="kitteh")
+        kitteh_id = Guid.objects.create(name='kitteh', object_id=kitteh.pk,
+                                        content_type=ContentType.objects.get_for_model(kitteh))
+        cheetah = Feline.objects.create(name="cheetah")
+        cheetah_id = Guid.objects.create(name='cheetah', object_id=cheetah.pk,
+                                         content_type=ContentType.objects.get_for_model(cheetah))
+        fido = Canine.objects.create(name="fido")
+        fido_id = Guid.objects.create(name='fido', object_id=fido.pk,
+                                      content_type=ContentType.objects.get_for_model(fido))
+        simba = BigCat.objects.create(name="simba")
+        simba_id = Guid.objects.create(name='simba', object_id=simba.pk,
+                                       content_type=ContentType.objects.get_for_model(simba))
+        mufasa = AngryBigCat.objects.create(name="mufasa")
+        mufasa_id = Guid.objects.create(name='mufasa', object_id=mufasa.pk,
+                                        content_type=ContentType.objects.get_for_model(mufasa))
+        kajtek = Parrot.objects.create(name="Kajtek")
+        kajetek_id = Guid.objects.create(name='kajtek', object_id=kajtek.pk,
+                                         content_type=ContentType.objects.get_for_model(kajtek))
 
 
 class TestTypedModels(SetupStuff):
@@ -37,9 +55,12 @@ class TestTypedModels(SetupStuff):
             pass
 
     def test_get_types(self):
-        self.assertEqual(set(Animal.get_types()), set(['typedmodels.canine', 'typedmodels.bigcat', 'typedmodels.parrot', 'typedmodels.angrybigcat', 'typedmodels.feline']))
+        self.assertEqual(set(Animal.get_types()), set(
+            ['typedmodels.canine', 'typedmodels.bigcat', 'typedmodels.parrot', 'typedmodels.angrybigcat',
+             'typedmodels.feline']))
         self.assertEqual(set(Canine.get_types()), set(['typedmodels.canine']))
-        self.assertEqual(set(Feline.get_types()), set(['typedmodels.bigcat', 'typedmodels.angrybigcat', 'typedmodels.feline']))
+        self.assertEqual(set(Feline.get_types()),
+                         set(['typedmodels.bigcat', 'typedmodels.angrybigcat', 'typedmodels.feline']))
 
     def test_get_type_classes(self):
         self.assertEqual(set(Animal.get_type_classes()), set([Canine, BigCat, Parrot, AngryBigCat, Feline]))
@@ -47,14 +68,16 @@ class TestTypedModels(SetupStuff):
         self.assertEqual(set(Feline.get_type_classes()), set([BigCat, AngryBigCat, Feline]))
 
     def test_type_choices(self):
-        type_choices = set((cls for cls, _  in Animal._meta.get_field('type').choices))
+        type_choices = set((cls for cls, _ in Animal._meta.get_field('type').choices))
         self.assertEqual(type_choices, set(Animal.get_types()))
 
     def test_base_model_queryset(self):
         # all objects returned
         qs = Animal.objects.all().order_by('type')
         self.assertEqual(len(qs), 6)
-        self.assertEqual([obj.type for obj in qs], ['typedmodels.angrybigcat', 'typedmodels.bigcat', 'typedmodels.canine', 'typedmodels.feline', 'typedmodels.feline', 'typedmodels.parrot'])
+        self.assertEqual([obj.type for obj in qs],
+                         ['typedmodels.angrybigcat', 'typedmodels.bigcat', 'typedmodels.canine',
+                          'typedmodels.feline', 'typedmodels.feline', 'typedmodels.parrot'])
         self.assertEqual([type(obj) for obj in qs], [AngryBigCat, BigCat, Canine, Feline, Feline, Parrot])
 
     def test_proxy_model_queryset(self):
@@ -67,7 +90,9 @@ class TestTypedModels(SetupStuff):
         qs = Feline.objects.all().order_by('type')
         self.assertEqual(qs.count(), 4)
         self.assertEqual(len(qs), 4)
-        self.assertEqual([obj.type for obj in qs], ['typedmodels.angrybigcat', 'typedmodels.bigcat', 'typedmodels.feline', 'typedmodels.feline'])
+        self.assertEqual([obj.type for obj in qs],
+                         ['typedmodels.angrybigcat', 'typedmodels.bigcat', 'typedmodels.feline',
+                          'typedmodels.feline'])
         self.assertEqual([type(obj) for obj in qs], [AngryBigCat, BigCat, Feline, Feline])
 
     def test_doubly_proxied_model_queryset(self):
@@ -121,7 +146,8 @@ class TestTypedModels(SetupStuff):
         angry.canines_eaten.add(canine)
         self.assertEqual(list(angry.canines_eaten.all()), [canine])
 
-        # Feline class was created before Parrot and has mice_eaten field which is non-m2m, so it may break accessing
+        # Feline class was created before Parrot and has mice_eaten field which is non-m2m, so it may break
+        #  accessing
         # known_words field in Parrot instances (since Django 1.5).
         parrot = Parrot.objects.all()[0]
         parrot.known_words = 500
@@ -174,7 +200,8 @@ class TestTypedModels(SetupStuff):
         """Helper function used to check serialization and deserialization for concrete format."""
         animals = Animal.objects.order_by('pk')
         serialized_animals = serializers.serialize(serialization_format, animals)
-        deserialized_animals = [wrapper.object for wrapper in serializers.deserialize(serialization_format, serialized_animals)]
+        deserialized_animals = [wrapper.object for wrapper in
+                                serializers.deserialize(serialization_format, serialized_animals)]
         self.assertEqual(set(deserialized_animals), set(animals))
 
     def test_xml_serialization(self):
@@ -186,3 +213,13 @@ class TestTypedModels(SetupStuff):
     @unittest.skipUnless(PYYAML_AVAILABLE, 'PyYAML is not available.')
     def test_yaml_serialization(self):
         self._check_serialization('yaml')
+
+    def test_generic_relation(self):
+        for animal in Animal.objects.all():
+            self.assertTrue(hasattr(animal, 'guids'))
+            self.assertTrue(animal.guids.all())
+
+        for uid in UniqueIdentifier.objects.all():
+            cls = uid.referent.__class__
+            animal = cls .objects.filter(guids=uid)
+            self.assertTrue(isinstance(animal.first(), Animal))
