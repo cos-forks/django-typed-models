@@ -17,7 +17,7 @@ class UniqueIdentifier(models.Model):
 
 
 class UniqueIdentifierMixin(models.Model):
-    unique_identifiers = GenericRelation(UniqueIdentifier, related_name='referent', related_query_name='referents')
+    unique_identifiers = GenericRelation(UniqueIdentifier, related_query_name='referents')
 
     class Meta:
         abstract = True
