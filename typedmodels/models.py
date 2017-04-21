@@ -12,11 +12,7 @@ from django.db.models.fields import Field
 from django.utils.encoding import smart_text
 from django.utils.six import with_metaclass
 
-make_immutable_fields_list = None
-if django.VERSION >= (1, 8):
-    from django.db.models.options import make_immutable_fields_list
-
-from collections import OrderedDict
+from django.db.models.options import make_immutable_fields_list
 
 
 class TypedModelManager(models.Manager):
@@ -83,10 +79,10 @@ class TypedModelMetaclass(ModelBase):
             declared_fields = dict((name, element) for name, element in classdict.items() if isinstance(element, Field))
 
             for field_name, field in declared_fields.items():
-                # In Django 1.8+, warnings will be triggered by the system
+                # Warnings will be triggered by django's system
                 # check for M2M fields setting if we set null to True. Prevent
                 # those warnings by setting null only for non-M2M fields.
-                if django.VERSION < (1, 8) or not field.many_to_many:
+                if not field.many_to_many:
                     field.null = True
                 if isinstance(field, models.fields.related.RelatedField):
                     # Monkey patching field instance to make do_related_class use created class instead of base_class.
@@ -157,11 +153,7 @@ class TypedModelMetaclass(ModelBase):
                         and hasattr(superclass, '_typedmodels_type')):
                     superclass._typedmodels_subtypes.append(typ)
 
-            # Django 1.8 substantially changed the _meta API for this stuff.
-            if django.VERSION < (1, 8):
-                meta._django_17_patch_fields_cache(cls, base_class)
-            else:
-                meta._patch_fields_cache(cls, base_class)
+            meta._patch_fields_cache(cls, base_class)
         else:
             # this is the base class
             cls._typedmodels_registry = {}
@@ -169,21 +161,6 @@ class TypedModelMetaclass(ModelBase):
             # Since fields may be added by subclasses, save original fields.
             cls._meta._typedmodels_original_fields = cls._meta.fields
             cls._meta._typedmodels_original_many_to_many = cls._meta.many_to_many
-
-            # set default manager. this will be inherited by subclasses, since they are proxy models
-            manager = None
-            if not cls._default_manager:
-                manager = TypedModelManager()
-            elif not isinstance(cls._default_manager, TypedModelManager):
-                class Manager(TypedModelManager, cls._default_manager.__class__):
-                    pass
-                cls._default_manager.__class__ = Manager
-                manager = cls._default_manager
-            if manager is not None:
-                cls.add_to_class('objects', manager)
-                if django.VERSION < (1, 10):
-                    # _default_manager became readonly in django 1.10. luckily we don't actually need it.
-                    cls._default_manager = cls.objects
 
             # add a get_type_classes classmethod to allow fetching of all the subclasses (useful for admin)
 
@@ -216,13 +193,10 @@ class TypedModelMetaclass(ModelBase):
                 if f in ancestor._meta.declared_fields.values():
                     return True
 
-        if django.VERSION >= (1, 8):
-            # In django 1.8+ reverse m2m fields are in fields_map instead of
-            # _typedmodels_original_many_to_many, so will need some special handling here.
-            if m2m in (True, None) and f.name in cls._meta.fields_map:
-                # Crazy case where a reverse M2M from another typedmodels proxy points to this proxy
-                # (this is an m2m reverse field)
-                return True
+        if m2m in (True, None) and f.name in cls._meta.fields_map:
+            # Crazy case where a reverse M2M from another typedmodels proxy points to this proxy
+            # (this is an m2m reverse field)
+            return True
         return False
 
     @staticmethod
@@ -252,53 +226,6 @@ class TypedModelMetaclass(ModelBase):
 
         # If fields are already cached, expire the cache.
         cls._meta._expire_cache()
-
-    @staticmethod
-    def _django_17_patch_fields_cache(cls, base_class):
-        # Overriding _fill_fields_cache and _fill_m2m_cache functions in Meta.
-        # This is done by overriding method for specific instance of
-        # django.db.models.options.Options class, which generally should
-        # be avoided, but in this case it may be better than monkey patching
-        # Options or copy-pasting large parts of Django code.
-
-        def _fill_fields_cache(self):
-            cache = []
-            for parent in self.parents:
-                for field, model in parent._meta.get_fields_with_model():
-                    if TypedModelMetaclass._model_has_field(cls, base_class, field, m2m=False):
-                        if model:
-                            cache.append((field, model))
-                        else:
-                            cache.append((field, parent))
-            self._field_cache = tuple(cache)
-            self._field_name_cache = [x for x, _ in cache]
-        cls._meta._fill_fields_cache = types.MethodType(_fill_fields_cache, cls._meta)
-        if hasattr(cls._meta, '_field_name_cache'):
-            del cls._meta._field_name_cache
-        if hasattr(cls._meta, '_field_cache'):
-            del cls._meta._field_cache
-        cls._meta._fill_fields_cache()
-
-        def _fill_m2m_cache(self):
-            cache = OrderedDict()
-            for parent in self.parents:
-                for field, model in parent._meta.get_m2m_with_model():
-                    if TypedModelMetaclass._model_has_field(cls, base_class, field, m2m=True):
-                        if model:
-                            cache[field] = model
-                        else:
-                            cache[field] = parent
-            for field in self.local_many_to_many:
-                cache[field] = None
-            self._m2m_cache = cache
-        cls._meta._fill_m2m_cache = types.MethodType(_fill_m2m_cache, cls._meta)
-        if hasattr(cls._meta, '_m2m_cache'):
-            del cls._meta._m2m_cache
-        cls._meta._fill_m2m_cache()
-
-        # Flush “fields” property cache (ie the thing that @cached_property sets).
-        if 'fields' in cls._meta.__dict__:
-            del cls._meta.__dict__['fields']
 
 
 class TypedModel(with_metaclass(TypedModelMetaclass, models.Model)):
@@ -387,10 +314,7 @@ class TypedModel(with_metaclass(TypedModelMetaclass, models.Model)):
             typ = self.type
         else:
             if isinstance(typ, type) and issubclass(typ, base):
-                if django.VERSION < (1, 7):
-                    model_name = typ._meta.module_name
-                else:
-                    model_name = typ._meta.model_name
+                model_name = typ._meta.model_name
                 typ = '%s.%s' % (typ._meta.app_label, model_name)
 
         try:
